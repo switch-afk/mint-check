@@ -63,3 +63,16 @@ export function rateLimitHint(message) {
   }
   return '';
 }
+
+// Very large tokens (USDC, for example) have too many token accounts for the
+// RPC to list the largest ones. That is a limit of the RPC, not a mistake.
+export function tooManyAccountsHint(message) {
+  if (typeof message === 'string' && /too many accounts/i.test(message)) {
+    return 'This token has too many holders for the RPC to list its largest accounts. That happens with very large tokens such as USDC. The authority checks above still apply.';
+  }
+  return '';
+}
+
+export function errorHint(message) {
+  return rateLimitHint(message) || tooManyAccountsHint(message);
+}
