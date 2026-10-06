@@ -1,6 +1,9 @@
 // Each finding looks like: { id, level, title, detail }
 // level is one of: ok, info, warn, danger
 
+export const TOP_HOLDER_WARN = 20;
+export const TOP10_WARN = 80;
+
 const LABELS = {
   ok: '[OK]',
   info: '[INFO]',
@@ -126,6 +129,61 @@ export function checkMint(info) {
   return [...checkAuthorities(info), ...checkExtensions(info)];
 }
 
+// Concentration is a warning, never a danger: liquidity pools, bonding curves
+// and exchanges often hold a large share of a perfectly fine token.
+export function checkHolders(result) {
+  if (result.holders.length === 0) {
+    return [
+      {
+        id: 'holders',
+        level: 'info',
+        title: 'No holders found',
+        detail: 'The token has no holders yet, or its supply is zero.',
+      },
+    ];
+  }
+
+  const findings = [];
+  const top = result.holders[0];
+  const topText = `${result.top1.toFixed(2)}%`;
+
+  if (result.top1 >= TOP_HOLDER_WARN) {
+    findings.push({
+      id: 'top-holder',
+      level: 'warn',
+      title: `Largest holder owns ${topText} of the supply`,
+      detail: `${top.owner} holds this share. It may be a liquidity pool, a bonding curve, an exchange or the creator, so check the address on a block explorer.`,
+    });
+  } else {
+    findings.push({
+      id: 'top-holder',
+      level: 'ok',
+      title: `Largest holder owns ${topText} of the supply`,
+      detail: 'No single wallet dominates the supply.',
+    });
+  }
+
+  const top10Text = `${result.top10.toFixed(2)}%`;
+
+  if (result.top10 >= TOP10_WARN) {
+    findings.push({
+      id: 'top10-holders',
+      level: 'warn',
+      title: `Top 10 holders own ${top10Text} of the supply`,
+      detail: 'The supply sits in a few wallets, so a few sellers can move the price. Pools and exchanges can account for part of this.',
+    });
+  } else {
+    findings.push({
+      id: 'top10-holders',
+      level: 'ok',
+      title: `Top 10 holders own ${top10Text} of the supply`,
+      detail: 'The supply is spread across more wallets.',
+    });
+  }
+
+  return findings;
+}
+
 export function summarize(findings) {
   const count = (level) => findings.filter((f) => f.level === level).length;
   const danger = count('danger');
@@ -140,7 +198,7 @@ export function summarize(findings) {
   };
 }
 
-export function verdictLine(summary) {
+export function verdictLine(summary, scope = 'authority checks') {
   const plural = (n) => (n === 1 ? '' : 's');
 
   if (summary.danger > 0) {
@@ -149,7 +207,7 @@ export function verdictLine(summary) {
   if (summary.warn > 0) {
     return `Result: CAUTION (${summary.warn} warning${plural(summary.warn)})`;
   }
-  return 'Result: no red flags found in the authority checks';
+  return `Result: no red flags found in the ${scope}`;
 }
 
 export function renderFindings(findings) {
