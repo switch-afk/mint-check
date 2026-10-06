@@ -9,8 +9,9 @@ Check a Solana token mint for red flags before you buy: who can mint more, who c
 ## Checks
 
 - [x] Mint info: supply, decimals, token program and Token-2022 extensions
-- [ ] Mint authority: can the creator still print more tokens?
-- [ ] Freeze authority: can the creator freeze your token account?
+- [x] Mint authority: can the creator still print more tokens?
+- [x] Freeze authority: can the creator freeze your token account?
+- [x] Risky Token-2022 extensions
 - [ ] Holder concentration: how much of the supply sits in the top accounts
 - [ ] Readable report and `--json` output for scripting
 
@@ -39,9 +40,31 @@ Program     SPL Token
 Supply      8,123,456,789.123456
 Decimals    6
 RPC         api.mainnet-beta.solana.com
+
+Checks
+  [WARN]    Mint authority is active
+            <address> can create more tokens at any time. ...
+  [WARN]    Freeze authority is active
+            <address> can freeze any holder's token account, ...
+
+Result: CAUTION (2 warnings)
 ```
 
-Token-2022 mints also list their extensions, such as `transferFeeConfig` or `permanentDelegate`.
+### What the checks mean
+
+| Finding | Level | Why it matters |
+| --- | --- | --- |
+| Mint authority active | warn | The creator can print more tokens and dilute holders |
+| Freeze authority active | warn | The creator can freeze a holder's token account |
+| Permanent delegate | danger | One address can move or burn tokens from any holder's account |
+| Transfer hook | warn | A custom program runs on every transfer and can block it |
+| Transfer fee | warn | Every transfer is charged a fee that the authority can change |
+| Pausable | warn | A pause authority can halt all transfers |
+| Non-transferable | warn | Tokens cannot be moved between wallets |
+| Default account state frozen | warn | New holders start frozen until thawed |
+| Mint close authority | info | The mint can be closed once supply is zero |
+
+Many legitimate tokens, such as stablecoins, keep some of these powers on purpose. The tool shows what the token allows, not what its creator intends. It is not financial advice.
 
 ### Using your own RPC
 

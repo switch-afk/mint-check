@@ -62,6 +62,7 @@ export async function fetchMintInfo(mint, rpcUrl, timeoutMs = 5000) {
   }
 
   const info = parsed.info;
+  const extensionDetails = info.extensions ?? [];
 
   return {
     ok: true,
@@ -74,6 +75,7 @@ export async function fetchMintInfo(mint, rpcUrl, timeoutMs = 5000) {
     mintAuthority: info.mintAuthority ?? null,
     freezeAuthority: info.freezeAuthority ?? null,
     isInitialized: info.isInitialized !== false,
-    extensions: (info.extensions ?? []).map((entry) => entry.extension),
+    extensions: extensionDetails.map((entry) => entry.extension),
+    extensionDetails,
   };
 }
