@@ -3,6 +3,12 @@ import { readFileSync } from 'node:fs';
 import { isValidAddress } from '../src/address.js';
 import { DEFAULT_RPC, hostLabel } from '../src/rpc.js';
 import { fetchMintInfo } from '../src/mint.js';
+import {
+  checkMint,
+  summarize,
+  verdictLine,
+  renderFindings,
+} from '../src/checks.js';
 
 const pkg = JSON.parse(
   readFileSync(new URL('../package.json', import.meta.url), 'utf8')
@@ -117,4 +123,13 @@ if (info.extensions.length > 0) {
 rows.push(['RPC', hostLabel(rpcUrl)]);
 
 printRows(rows);
-console.log('\nAuthority and holder checks are coming in the next releases.');
+
+const findings = checkMint(info);
+
+console.log('\nChecks');
+console.log(renderFindings(findings));
+console.log(`\n${verdictLine(summarize(findings))}`);
+console.log(
+  '\nThese checks show what the token allows, not what its creator intends. Not financial advice.'
+);
+console.log('The holder concentration check is coming in the next release.');
