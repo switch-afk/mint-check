@@ -9,7 +9,9 @@ export function hostLabel(url) {
   }
 }
 
-export async function rpcCall(url, method, params = [], timeoutMs = 5000) {
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function attemptCall(url, method, params, timeoutMs) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -33,4 +35,31 @@ export async function rpcCall(url, method, params = [], timeoutMs = 5000) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+// Rate-limited requests (HTTP 429) are retried with a growing delay. Every
+// other failure is returned right away.
+export async function rpcCall(
+  url,
+  method,
+  params = [],
+  timeoutMs = 5000,
+  { retries = 2, retryDelayMs = 1000 } = {}
+) {
+  let res = await attemptCall(url, method, params, timeoutMs);
+
+  for (let i = 0; i < retries && !res.ok && res.error === 'HTTP 429'; i++) {
+    await sleep(retryDelayMs * (i + 1));
+    res = await attemptCall(url, method, params, timeoutMs);
+  }
+
+  return res;
+}
+
+// Returns a hint to print under an error message, or '' when none applies.
+export function rateLimitHint(message) {
+  if (typeof message === 'string' && message.includes('429')) {
+    return 'The public RPC is rate limiting this request. Set MINT_CHECK_RPC to your own RPC endpoint (free tiers work) and try again.';
+  }
+  return '';
 }

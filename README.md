@@ -13,7 +13,8 @@ Check a Solana token mint for red flags before you buy: who can mint more, who c
 - [x] Freeze authority: can the creator freeze your token account?
 - [x] Risky Token-2022 extensions
 - [x] Holder concentration: how much of the supply sits in the top wallets
-- [ ] Readable report and `--json` output for scripting
+- [x] `--json` output and exit codes for scripting
+- [ ] Packaging for `npx`
 
 ## Requirements
 
@@ -87,9 +88,60 @@ Many legitimate tokens, such as stablecoins, keep some of these powers on purpos
 - A large holder is often a liquidity pool, a bonding curve (for example a token still on pump.fun), an exchange or a locked vault, not a person. The tool cannot tell these apart, so concentration is always a **warning**, never a danger. Open the owner address on a block explorer to find out what it is.
 - Percentages are shares of the total supply.
 
+### JSON output
+
+Add `--json` to print the whole report as JSON and nothing else:
+
+```bash
+node bin/mint-check.js <mint-address> --json
+```
+
+```json
+{
+  "mint": "EPjF...",
+  "program": "SPL Token",
+  "supply": "8,123,456,789.123456",
+  "supplyRaw": "8123456789123456",
+  "decimals": 6,
+  "mintAuthority": "BJE5...",
+  "freezeAuthority": "7dGb...",
+  "extensions": [],
+  "rpc": "api.mainnet-beta.solana.com",
+  "checksRun": ["authority", "holders"],
+  "holders": {
+    "sampledAccounts": 20,
+    "ownersResolved": true,
+    "top1": 4.2,
+    "top5": 12.1,
+    "top10": 18.75,
+    "burnedPercent": 0,
+    "top": [{ "owner": "...", "accounts": 1, "amount": "341,234,567.89", "percent": 4.2 }]
+  },
+  "findings": [{ "id": "mint-authority", "level": "warn", "title": "...", "detail": "..." }],
+  "summary": { "ok": 2, "info": 0, "warn": 2, "danger": 0, "level": "warn" },
+  "result": "warn"
+}
+```
+
+If the holder lookup fails, `checksRun` is `["authority"]` and `holders` contains an `error` message instead of the numbers.
+
+### Exit codes
+
+| Code | Meaning |
+| --- | --- |
+| 0 | Finished. The `--fail-on` level, if given, was not reached |
+| 1 | Bad input or the lookup failed |
+| 2 | The result reached the `--fail-on` level |
+
+Use `--fail-on warn` or `--fail-on danger` in scripts and CI:
+
+```bash
+node bin/mint-check.js <mint-address> --fail-on danger || echo "do not touch this token"
+```
+
 ### Using your own RPC
 
-The public mainnet RPC is rate limited. To use your own, pass `-r` or set an environment variable, which keeps API keys out of your shell history:
+The public mainnet RPC is heavily rate limited, and the holder check in particular often gets `HTTP 429`. Rate-limited requests are retried twice, but for regular use you should bring your own endpoint (free tiers from RPC providers work). Pass `-r` or set an environment variable, which keeps API keys out of your shell history:
 
 ```bash
 export MINT_CHECK_RPC="https://your-rpc-url"
@@ -104,6 +156,8 @@ Only the RPC hostname is ever printed, never the full URL, so API keys stay priv
 | --- | --- | --- |
 | `-r, --rpc <url>` | RPC endpoint | `MINT_CHECK_RPC` or public mainnet |
 | `-t, --timeout <ms>` | Timeout per request | 5000 |
+| `--json` | Print the report as JSON only | off |
+| `--fail-on <level>` | Exit with code 2 when the result reaches `warn` or `danger` | off |
 | `-h, --help` | Show help | |
 | `-v, --version` | Show version | |
 

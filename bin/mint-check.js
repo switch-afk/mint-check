@@ -1,16 +1,11 @@
 #!/usr/bin/env node
 import { readFileSync } from 'node:fs';
 import { isValidAddress } from '../src/address.js';
-import { DEFAULT_RPC, hostLabel } from '../src/rpc.js';
+import { DEFAULT_RPC, hostLabel, rateLimitHint } from '../src/rpc.js';
 import { fetchMintInfo } from '../src/mint.js';
 import { fetchTopHolders, renderHolders } from '../src/holders.js';
-import {
-  checkMint,
-  checkHolders,
-  summarize,
-  verdictLine,
-  renderFindings,
-} from '../src/checks.js';
+import { renderFindings, verdictLine } from '../src/checks.js';
+import { buildReport, shouldFail } from '../src/report.js';
 
 const pkg = JSON.parse(
   readFileSync(new URL('../package.json', import.meta.url), 'utf8')
@@ -24,24 +19,40 @@ Usage:
   mint-check <mint-address> [options]
 
 Options:
-  -r, --rpc <url>      RPC endpoint (default ${DEFAULT_RPC})
-  -t, --timeout <ms>   Timeout per request in ms (default 5000)
-  -h, --help           Show this help
-  -v, --version        Show the version
+  -r, --rpc <url>        RPC endpoint (default ${DEFAULT_RPC})
+  -t, --timeout <ms>     Timeout per request in ms (default 5000)
+      --json             Print the report as JSON only
+      --fail-on <level>  Exit with code 2 if the result reaches this level
+                         (warn or danger)
+  -h, --help             Show this help
+  -v, --version          Show the version
+
+Exit codes:
+  0  finished, and the --fail-on level (if given) was not reached
+  1  bad input or the lookup failed
+  2  the result reached the --fail-on level
 
 You can also set the RPC with the MINT_CHECK_RPC environment variable,
 which keeps API keys out of your shell history.
 
 Only the RPC hostname is ever printed, never the full URL.
 
-Example:
+Examples:
   mint-check EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
+  mint-check <mint-address> --json
+  mint-check <mint-address> --fail-on warn
 `;
 
 function fail(message) {
   console.error(message);
   console.error('Run with --help to see what is available.');
   process.exit(1);
+}
+
+function printError(message) {
+  console.error(message);
+  const hint = rateLimitHint(message);
+  if (hint) console.error(hint);
 }
 
 function validUrl(value) {
@@ -54,13 +65,22 @@ function validUrl(value) {
 }
 
 function parseArgs(argv) {
-  const opts = { rpc: null, timeout: 5000, help: false, version: false };
+  const opts = {
+    rpc: null,
+    timeout: 5000,
+    json: false,
+    failOn: null,
+    help: false,
+    version: false,
+  };
   const positional = [];
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === '-h' || arg === '--help') opts.help = true;
     else if (arg === '-v' || arg === '--version') opts.version = true;
+    else if (arg === '--json') opts.json = true;
+    else if (arg === '--fail-on') opts.failOn = argv[++i];
     else if (arg === '-r' || arg === '--rpc') opts.rpc = argv[++i];
     else if (arg === '-t' || arg === '--timeout') opts.timeout = Number(argv[++i]);
     else if (arg.startsWith('-')) fail(`Unknown option: ${arg}`);
@@ -100,6 +120,10 @@ if (!Number.isFinite(opts.timeout) || opts.timeout <= 0) {
   fail('--timeout must be a positive number of milliseconds');
 }
 
+if (opts.failOn !== null && !['warn', 'danger'].includes(opts.failOn)) {
+  fail('--fail-on must be "warn" or "danger"');
+}
+
 const rpcUrl = opts.rpc ?? process.env.MINT_CHECK_RPC ?? DEFAULT_RPC;
 
 if (!validUrl(rpcUrl)) fail('Invalid RPC URL.');
@@ -107,44 +131,47 @@ if (!validUrl(rpcUrl)) fail('Invalid RPC URL.');
 const info = await fetchMintInfo(mint, rpcUrl, opts.timeout);
 
 if (!info.ok) {
-  console.error(info.error);
+  printError(info.error);
   process.exit(1);
 }
 
-const rows = [
-  ['Mint', info.mint],
-  ['Program', info.programName],
-  ['Supply', info.supply],
-  ['Decimals', String(info.decimals)],
-];
-
-if (info.extensions.length > 0) {
-  rows.push(['Extensions', info.extensions.join(', ')]);
-}
-
-rows.push(['RPC', hostLabel(rpcUrl)]);
-
-printRows(rows);
-
 const holders = await fetchTopHolders(info, rpcUrl, opts.timeout);
+const report = buildReport(info, holders, hostLabel(rpcUrl));
 
-const findings = [
-  ...checkMint(info),
-  ...(holders.ok ? checkHolders(holders) : []),
-];
-
-console.log('\nChecks');
-console.log(renderFindings(findings));
-
-if (holders.ok) {
-  console.log(`\n${renderHolders(holders)}`);
+if (opts.json) {
+  console.log(JSON.stringify(report, null, 2));
 } else {
-  console.log(`\nHolder check unavailable. ${holders.error}`);
+  const rows = [
+    ['Mint', info.mint],
+    ['Program', info.programName],
+    ['Supply', info.supply],
+    ['Decimals', String(info.decimals)],
+  ];
+
+  if (info.extensions.length > 0) {
+    rows.push(['Extensions', info.extensions.join(', ')]);
+  }
+
+  rows.push(['RPC', report.rpc]);
+
+  printRows(rows);
+
+  console.log('\nChecks');
+  console.log(renderFindings(report.findings));
+
+  if (holders.ok) {
+    console.log(`\n${renderHolders(holders)}`);
+  } else {
+    console.log(`\nHolder check unavailable. ${holders.error}`);
+    const hint = rateLimitHint(holders.error);
+    if (hint) console.log(hint);
+  }
+
+  const scope = holders.ok ? 'authority and holder checks' : 'authority checks';
+  console.log(`\n${verdictLine(report.summary, scope)}`);
+  console.log(
+    '\nThese checks show what the token allows, not what its creator intends. Not financial advice.'
+  );
 }
 
-const scope = holders.ok ? 'authority and holder checks' : 'authority checks';
-console.log(`\n${verdictLine(summarize(findings), scope)}`);
-console.log(
-  '\nThese checks show what the token allows, not what its creator intends. Not financial advice.'
-);
-console.log('A readable report and --json output are coming in the next release.');
+if (shouldFail(report.result, opts.failOn)) process.exitCode = 2;
