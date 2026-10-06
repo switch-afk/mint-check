@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { readFileSync } from 'node:fs';
 import { isValidAddress } from '../src/address.js';
-import { DEFAULT_RPC, hostLabel, rateLimitHint } from '../src/rpc.js';
+import { DEFAULT_RPC, hostLabel, errorHint } from '../src/rpc.js';
 import { fetchMintInfo } from '../src/mint.js';
 import { fetchTopHolders, renderHolders } from '../src/holders.js';
 import { renderFindings, verdictLine } from '../src/checks.js';
@@ -51,7 +51,7 @@ function fail(message) {
 
 function printError(message) {
   console.error(message);
-  const hint = rateLimitHint(message);
+  const hint = errorHint(message);
   if (hint) console.error(hint);
 }
 
@@ -163,7 +163,7 @@ if (opts.json) {
     console.log(`\n${renderHolders(holders)}`);
   } else {
     console.log(`\nHolder check unavailable. ${holders.error}`);
-    const hint = rateLimitHint(holders.error);
+    const hint = errorHint(holders.error);
     if (hint) console.log(hint);
   }
 

@@ -4,24 +4,32 @@
 
 Check a Solana token mint for red flags before you buy: who can mint more, who can freeze your tokens, and how concentrated the holders are.
 
-> Status: early development. Checks are landing one PR at a time.
-
 ## Checks
 
-- [x] Mint info: supply, decimals, token program and Token-2022 extensions
-- [x] Mint authority: can the creator still print more tokens?
-- [x] Freeze authority: can the creator freeze your token account?
-- [x] Risky Token-2022 extensions
-- [x] Holder concentration: how much of the supply sits in the top wallets
-- [x] `--json` output and exit codes for scripting
-- [ ] Packaging for `npx`
+- Mint info: supply, decimals, token program and Token-2022 extensions
+- Mint authority: can the creator still print more tokens?
+- Freeze authority: can the creator freeze your token account?
+- Risky Token-2022 extensions
+- Holder concentration: how much of the supply sits in the top wallets
+- `--json` output and exit codes for scripting
+- Zero dependencies, offline test suite, CI on every PR
 
-## Requirements
+## Quick start
 
-- Node.js 18 or newer
-- No dependencies
+Run it straight from GitHub, no install needed:
 
-## Usage
+```bash
+npx github:switch-afk/mint-check <mint-address>
+```
+
+Or install it globally:
+
+```bash
+npm install -g github:switch-afk/mint-check
+mint-check <mint-address>
+```
+
+Or clone it:
 
 ```bash
 git clone https://github.com/switch-afk/mint-check.git
@@ -29,38 +37,38 @@ cd mint-check
 node bin/mint-check.js <mint-address>
 ```
 
-Example:
+Requires Node.js 18 or newer. The examples below use `mint-check`. If you cloned the repo, use `node bin/mint-check.js` instead.
 
-```bash
-node bin/mint-check.js EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
-```
+## Example
 
 ```
-Mint        EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
-Program     SPL Token
-Supply      8,123,456,789.123456
+Mint        <mint address>
+Program     Token-2022
+Supply      972,401,166.83
 Decimals    6
-RPC         api.mainnet-beta.solana.com
+Extensions  metadataPointer, tokenMetadata
+RPC         your-rpc-host.example
 
 Checks
-  [WARN]    Mint authority is active
-            <address> can create more tokens at any time. ...
-  [WARN]    Freeze authority is active
-            <address> can freeze any holder's token account, ...
-  [OK]      Largest holder owns 4.20% of the supply
+  [OK]      Mint authority revoked
+            Nobody can create more tokens, so the supply is fixed.
+  [OK]      Freeze authority revoked
+            Nobody can freeze your token account.
+  [OK]      Largest holder owns 13.48% of the supply
             No single wallet dominates the supply.
-  [OK]      Top 10 holders own 18.75% of the supply
+  [OK]      Top 10 holders own 24.75% of the supply
             The supply is spread across more wallets.
 
 Top holders (largest 20 token accounts, grouped by owner)
-  #  Owner                                         Share  Amount
-  -  --------------------------------------------  -----  ---------------
-  1  <owner address>                               4.20%  341,234,567.89
+  #   Owner                                         Share   Amount
+  --  --------------------------------------------  ------  ------------------
+  1   <owner address>                               13.48%  131,160,410.02
+  2   <owner address>                               1.82%   17,773,343.82
   ...
 
-  Top 1: 4.20%   Top 5: 12.10%   Top 10: 18.75%
+  Top 1: 13.48%   Top 5: 20.08%   Top 10: 24.75%
 
-Result: CAUTION (2 warnings)
+Result: no red flags found in the authority and holder checks
 ```
 
 ### What the checks mean
@@ -87,35 +95,36 @@ Many legitimate tokens, such as stablecoins, keep some of these powers on purpos
 - Tokens in the burn address are shown as **Burned**, not as a holder.
 - A large holder is often a liquidity pool, a bonding curve (for example a token still on pump.fun), an exchange or a locked vault, not a person. The tool cannot tell these apart, so concentration is always a **warning**, never a danger. Open the owner address on a block explorer to find out what it is.
 - Percentages are shares of the total supply.
+- **Very large tokens cannot be holder-checked.** RPC providers refuse to list the largest accounts of tokens with millions of token accounts, such as USDC. In that case the tool says so, skips the holder check, and the result covers the authority checks only. In the JSON report, `checksRun` shows which checks actually ran.
 
 ### JSON output
 
 Add `--json` to print the whole report as JSON and nothing else:
 
 ```bash
-node bin/mint-check.js <mint-address> --json
+mint-check <mint-address> --json
 ```
 
 ```json
 {
-  "mint": "EPjF...",
+  "mint": "...",
   "program": "SPL Token",
-  "supply": "8,123,456,789.123456",
-  "supplyRaw": "8123456789123456",
+  "supply": "7,850,307,604.171513",
+  "supplyRaw": "7850307604171513",
   "decimals": 6,
-  "mintAuthority": "BJE5...",
-  "freezeAuthority": "7dGb...",
+  "mintAuthority": "...",
+  "freezeAuthority": "...",
   "extensions": [],
-  "rpc": "api.mainnet-beta.solana.com",
+  "rpc": "your-rpc-host.example",
   "checksRun": ["authority", "holders"],
   "holders": {
     "sampledAccounts": 20,
     "ownersResolved": true,
-    "top1": 4.2,
-    "top5": 12.1,
-    "top10": 18.75,
+    "top1": 13.48,
+    "top5": 20.08,
+    "top10": 24.75,
     "burnedPercent": 0,
-    "top": [{ "owner": "...", "accounts": 1, "amount": "341,234,567.89", "percent": 4.2 }]
+    "top": [{ "owner": "...", "accounts": 1, "amount": "131,160,410.02", "percent": 13.48 }]
   },
   "findings": [{ "id": "mint-authority", "level": "warn", "title": "...", "detail": "..." }],
   "summary": { "ok": 2, "info": 0, "warn": 2, "danger": 0, "level": "warn" },
@@ -136,7 +145,7 @@ If the holder lookup fails, `checksRun` is `["authority"]` and `holders` contain
 Use `--fail-on warn` or `--fail-on danger` in scripts and CI:
 
 ```bash
-node bin/mint-check.js <mint-address> --fail-on danger || echo "do not touch this token"
+mint-check <mint-address> --fail-on danger || echo "do not touch this token"
 ```
 
 ### Using your own RPC
@@ -145,7 +154,7 @@ The public mainnet RPC is heavily rate limited, and the holder check in particul
 
 ```bash
 export MINT_CHECK_RPC="https://your-rpc-url"
-node bin/mint-check.js <mint-address>
+mint-check <mint-address>
 ```
 
 Only the RPC hostname is ever printed, never the full URL, so API keys stay private.
@@ -170,6 +179,10 @@ npm test
 ```
 
 Tests run automatically on every pull request through GitHub Actions.
+
+## Contributing
+
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup and ideas.
 
 ## License
 
