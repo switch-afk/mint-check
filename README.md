@@ -12,7 +12,7 @@ Check a Solana token mint for red flags before you buy: who can mint more, who c
 - [x] Mint authority: can the creator still print more tokens?
 - [x] Freeze authority: can the creator freeze your token account?
 - [x] Risky Token-2022 extensions
-- [ ] Holder concentration: how much of the supply sits in the top accounts
+- [x] Holder concentration: how much of the supply sits in the top wallets
 - [ ] Readable report and `--json` output for scripting
 
 ## Requirements
@@ -46,6 +46,18 @@ Checks
             <address> can create more tokens at any time. ...
   [WARN]    Freeze authority is active
             <address> can freeze any holder's token account, ...
+  [OK]      Largest holder owns 4.20% of the supply
+            No single wallet dominates the supply.
+  [OK]      Top 10 holders own 18.75% of the supply
+            The supply is spread across more wallets.
+
+Top holders (largest 20 token accounts, grouped by owner)
+  #  Owner                                         Share  Amount
+  -  --------------------------------------------  -----  ---------------
+  1  <owner address>                               4.20%  341,234,567.89
+  ...
+
+  Top 1: 4.20%   Top 5: 12.10%   Top 10: 18.75%
 
 Result: CAUTION (2 warnings)
 ```
@@ -63,8 +75,17 @@ Result: CAUTION (2 warnings)
 | Non-transferable | warn | Tokens cannot be moved between wallets |
 | Default account state frozen | warn | New holders start frozen until thawed |
 | Mint close authority | info | The mint can be closed once supply is zero |
+| Largest holder 20% or more | warn | One wallet controls a big share of the supply |
+| Top 10 holders 80% or more | warn | A few wallets control almost everything |
 
 Many legitimate tokens, such as stablecoins, keep some of these powers on purpose. The tool shows what the token allows, not what its creator intends. It is not financial advice.
+
+### About the holder check
+
+- It looks at the 20 largest token accounts and groups them by owner wallet, so one wallet with several accounts counts once.
+- Tokens in the burn address are shown as **Burned**, not as a holder.
+- A large holder is often a liquidity pool, a bonding curve (for example a token still on pump.fun), an exchange or a locked vault, not a person. The tool cannot tell these apart, so concentration is always a **warning**, never a danger. Open the owner address on a block explorer to find out what it is.
+- Percentages are shares of the total supply.
 
 ### Using your own RPC
 

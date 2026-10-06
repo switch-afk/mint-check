@@ -3,8 +3,10 @@ import { readFileSync } from 'node:fs';
 import { isValidAddress } from '../src/address.js';
 import { DEFAULT_RPC, hostLabel } from '../src/rpc.js';
 import { fetchMintInfo } from '../src/mint.js';
+import { fetchTopHolders, renderHolders } from '../src/holders.js';
 import {
   checkMint,
+  checkHolders,
   summarize,
   verdictLine,
   renderFindings,
@@ -124,12 +126,25 @@ rows.push(['RPC', hostLabel(rpcUrl)]);
 
 printRows(rows);
 
-const findings = checkMint(info);
+const holders = await fetchTopHolders(info, rpcUrl, opts.timeout);
+
+const findings = [
+  ...checkMint(info),
+  ...(holders.ok ? checkHolders(holders) : []),
+];
 
 console.log('\nChecks');
 console.log(renderFindings(findings));
-console.log(`\n${verdictLine(summarize(findings))}`);
+
+if (holders.ok) {
+  console.log(`\n${renderHolders(holders)}`);
+} else {
+  console.log(`\nHolder check unavailable. ${holders.error}`);
+}
+
+const scope = holders.ok ? 'authority and holder checks' : 'authority checks';
+console.log(`\n${verdictLine(summarize(findings), scope)}`);
 console.log(
   '\nThese checks show what the token allows, not what its creator intends. Not financial advice.'
 );
-console.log('The holder concentration check is coming in the next release.');
+console.log('A readable report and --json output are coming in the next release.');
